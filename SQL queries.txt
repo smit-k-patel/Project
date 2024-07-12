@@ -1,0 +1,210 @@
+SQL Database Link:  postgres://Test:bQNxVzJL4g6u@ep-noisy-flower-846766-pooler.us-east-2.aws.neon.tech/Unicorn
+
+
+QUERIES:
+
+--1. How many customers do we have in the data? ANSWER: 795
+
+SELECT COUNT (DISTINCT customer_id)
+FROM customers;
+
+
+-- 2. What was the city with the most profit for the company in 2015? ANSWER: New York City
+--3. In 2015, what was the most profitable city's profit? ANSWER: 14753
+
+SELECT o.shipping_city, SUM(order_profits) as total_profit
+FROM orders o
+	INNER JOIN order_details od ON o.order_id=od.order_id
+WHERE EXTRACT(YEAR FROM order_date) = 2015
+GROUP BY o.shipping_city
+ORDER BY total_profit DESC;
+
+
+
+--4. How many different cities do we have in the data? ANSWER: 531
+
+SELECT COUNT(DISTINCT shipping_city)
+FROM orders;
+
+
+--5. Show the total spent by customers from low to high.
+
+SELECT c.customer_id, SUM(order_sales) AS total_spent
+FROM customers c
+	INNER JOIN orders o ON o.customer_id=c.customer_id
+  INNER JOIN order_details od ON o.order_id=od.order_id
+GROUP BY c.customer_id
+ORDER BY total_spent;
+
+
+--6. What is the most profitable city in the State of Tennessee? ANSWER: Lebanon
+SELECT o.shipping_city, SUM(order_profits) as total_profit
+FROM orders o
+	INNER JOIN order_details od ON o.order_id=od.order_id
+WHERE o.shipping_state = 'Tennessee'
+GROUP BY o.shipping_city
+ORDER BY total_profit DESC;
+
+
+
+--7. What’s the average annual profit for that city across all years? AVERAGE: 27.67
+WITH profitable_city as(
+  SELECT o.shipping_city, EXTRACT(YEAR FROM order_date) as order_year, SUM(od.order_profits) AS annual_profit
+	FROM orders o
+		INNER JOIN order_details od ON o.order_id=od.order_id
+	WHERE o.shipping_city = 'Lebanon'
+	GROUP BY o.shipping_city, order_year)
+
+SELECT AVG(annual_profit) as average_profit
+FROM profitable_city;
+
+
+
+SELECT o.shipping_city, AVG(od.order_profits) AS average_profit
+FROM orders o
+	INNER JOIN order_details od ON o.order_id=od.order_id
+WHERE o.shipping_state = 'Tennessee'
+GROUP BY o.shipping_city
+order by average_profit DESC;
+
+
+
+--8. What is the distribution of customer types in the data?
+
+SELECT 
+    customer_segment, 
+    COUNT(*) AS segment_count,
+    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM customers), 2) AS percentage
+FROM customers
+GROUP BY customer_segment;
+
+
+
+--9. What’s the most profitable product category on average in Iowa across all years? ANSWER: Furniture
+
+SELECT p.product_category, o.shipping_state, AVG(od.order_profits) AS average_profit
+FROM order_details od
+	INNER JOIN product p ON p.product_id = od.product_id
+  INNER JOIN orders o ON o.order_id=od.order_id
+WHERE o.shipping_state = 'Iowa'
+GROUP BY p.product_category, o.shipping_state
+ORDER BY average_profit DESC;
+
+
+--10. What is the most popular product in that category across all states in 2016?
+
+SELECT p.product_name, SUM(od.quantity) AS total_sales
+FROM order_details od
+	INNER JOIN product p ON p.product_id = od.product_id
+  INNER JOIN orders o ON o.order_id=od.order_id
+WHERE p.product_category = 'Furniture' AND EXTRACT(YEAR FROM o.order_date) = 2016
+GROUP BY p.product_name
+ORDER BY total_sales DESC;
+
+
+--Which customer got the most discount in the data? (in total amount) ANSWER: 687, Sean Miller
+
+SELECT c.customer_id, c.customer_name, SUM((od.order_sales/(1-od.order_discount))-od.order_sales) as total_discount
+FROM customers c
+	INNER JOIN orders o ON o.customer_id=c.customer_id
+  INNER JOIN order_details od ON od.order_id=o.order_id
+GROUP BY c.customer_id, c.customer_name
+ORDER BY total_discount DESC;
+
+
+--11. How widely did monthly profits vary in 2018?
+
+WITH profits_per_month AS(
+	SELECT EXTRACT(MONTH FROM order_date) as order_month, SUM(order_profits) as monthly_profits
+  FROM order_details od
+  	INNER JOIN orders o ON o.order_id=od.order_id
+  WHERE EXTRACT(YEAR FROM order_date) = 2018
+	GROUP BY order_month)
+  
+SELECT STDDEV(monthly_profits) AS variation
+FROM profits_per_month;
+
+--12. Which was the biggest order regarding sales in 2015?
+
+SELECT order_details_id, o.order_id, order_sales
+FROM order_details od
+	INNER JOIN orders o ON o.order_id=od.order_id
+WHERE EXTRACT(YEAR FROM order_date) = 2015
+ORDER BY order_sales DESC;
+
+
+
+--13. What was the rank of each city in the East region in 2015 in quantity?
+
+SELECT o.shipping_city, SUM(od.quantity) AS total_quantity, RANK() OVER(ORDER BY SUM(od.quantity) DESC) as quantity_rank
+FROM order_details od
+	INNER JOIN orders o ON o.order_id=od.order_id
+WHERE shipping_region = 'East' AND EXTRACT(YEAR FROM order_date) = 2015
+GROUP BY o.shipping_city
+ORDER BY quantity_rank;
+
+
+--14. Display customer names for customers who are in the segment ‘Consumer’ or ‘Corporate.’ How many customers are there in total?
+
+SELECT COUNT(DISTINCT customer_id)
+FROM customers
+WHERE customer_segment IN ('Consumer', 'Corporate')
+
+
+--15. Calculate the difference between the largest and smallest order quantities for product id ‘100.’ ANSWER: 4
+
+SELECT product_id, (MAX(quantity)-MIN(quantity)) as difference
+FROM order_details od
+WHERE product_id = 100
+GROUP BY product_id;
+
+
+--16. Calculate the percent of products that are within the category ‘Furniture.’ ANSWER: 0.20540540540540542
+
+SELECT COUNT(DISTINCT product_id) FILTER(WHERE product_category='Furniture') / COUNT(product_id)::FLOAT as furniture_percent
+FROM product
+
+
+
+--17. Display the number of product manufacturers with more than 1 product in the product table. ANSWER:169 (168 without manufacturer "OTHER")
+--Not solved
+
+WITH products_per_manufacturer AS(
+  SELECT product_manufacturer, COUNT(DISTINCT product_id) as total_products
+	FROM product
+  WHERE product_manufacturer = 'SanDisk'
+	GROUP BY product_manufacturer
+	HAVING COUNT(DISTINCT product_id)>1
+	ORDER BY total_products)
+  
+SELECT COUNT(product_manufacturer) AS total_manufacturers
+FROM products_per_manufacturer;
+
+
+
+--18. Show the product_subcategory and the total number of products in the subcategory.
+
+SELECT product_subcategory, COUNT(DISTINCT product_id) as total_products
+FROM product
+GROUP BY product_subcategory
+ORDER BY total_products DESC, product_subcategory;
+
+
+--19. Show the order from most to least products and then by product_subcategory name ascending.
+
+SELECT od.order_id, p.product_subcategory, COUNT(DISTINCT od.product_id) as total_products
+FROM order_details od
+	INNER JOIN product p ON p.product_id=od.product_id
+GROUP BY od.order_id, p.product_subcategory
+ORDER BY total_products DESC, p.product_subcategory;
+  
+
+
+--20. Show the product_id(s), the sum of quantities, where the total sum of its product quantities is greater than or equal to 100.
+
+
+SELECT product_id, quantity, SUM(quantity) as product_quantities
+FROM order_details
+WHERE quantity > 100
+GROUP BY product_id, quantity
+HAVING SUM(quantity) >= 100;
